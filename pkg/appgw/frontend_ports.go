@@ -26,7 +26,7 @@ func (c *appGwConfigBuilder) getFrontendPorts(ingressList []*v1beta1.Ingress) *[
 
 	// fallback to default listener as placeholder if no listener is available
 	if len(allPorts) == 0 {
-		port := defaultFrontendListenerIdentifier().FrontendPort
+		port := defaultFrontendlistenerIdentifier().FrontendPort
 		allPorts[port] = nil
 	}
 

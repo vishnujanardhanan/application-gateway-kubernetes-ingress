@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/annotations"
+	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/brownfield"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/events"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/sorter"
 )
@@ -27,9 +28,135 @@ const (
 	DefaultConnDrainTimeoutInSec = 30
 )
 
-func newBackendIdsFiltered(ingressList []*v1beta1.Ingress, serviceList []*v1.Service) map[backendIdentifier]interface{} {
+func (c *appGwConfigBuilder) BackendHTTPSettingsCollection(cbCtx *ConfigBuilderContext) error {
+
+	// Get existing && remove managed
+	newManaged, err := c.getManagedSettings(cbCtx)
+	if err != nil {
+		return err
+	}
+
+	existingUnmanaged, err := c.getExistingUnmanagedSettings(cbCtx)
+	if err != nil {
+		return err
+	}
+	allSettings := mergeSettings(newManaged, existingUnmanaged)
+
+	// allSettings, _, _, err := c.getBackendsAndSettingsMap(cbCtx)
+	if allSettings != nil {
+		sort.Sort(sorter.BySettingsName(*allSettings))
+	}
+	c.appGwConfig.BackendHTTPSettingsCollection = allSettings
+	return err
+}
+
+func (c *appGwConfigBuilder) getExistingUnmanagedSettings(cbCtx *ConfigBuilderContext) (*[]n.ApplicationGatewayBackendHTTPSettings, error) {
+
+	managed, err := c.getManagedSettings(cbCtx)
+	if err != nil {
+		return nil, err
+	}
+	managedMap := make(map[string]n.ApplicationGatewayBackendHTTPSettings)
+	for _, s := range *managed {
+		managedMap[*s.Name] = s
+	}
+	var unmanagedSettings []n.ApplicationGatewayBackendHTTPSettings
+
+	if c.appGwConfig.BackendHTTPSettingsCollection == nil {
+		return &unmanagedSettings, nil
+	}
+
+	for _, s := range *c.appGwConfig.BackendHTTPSettingsCollection {
+		if _, isManaged := managedMap[*s.Name]; !isManaged {
+			unmanagedSettings = append(unmanagedSettings, s)
+		}
+	}
+	return &unmanagedSettings, nil
+}
+
+func (c *appGwConfigBuilder) getManagedSettings(cbCtx *ConfigBuilderContext) (*[]n.ApplicationGatewayBackendHTTPSettings, error) {
+	newHTTPSettings, _, _, err := c.getBackendsAndSettingsMap(cbCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	blacklist := getProhibitedTargetList(cbCtx)
+	whitelist := getManagedTargetList(cbCtx)
+
+	if len(*blacklist) == 0 && len(*whitelist) == 0 {
+		return newHTTPSettings, nil
+	}
+
+	var managedSettings []n.ApplicationGatewayBackendHTTPSettings
+
+	routingRules, _ := c.getRules(cbCtx)
+	listenersByName := c.getListenersByName(cbCtx)
+	pathMapsByName := c.getPathsByName(cbCtx)
+	settingNameToTarget := brownfield.GetSettingToTargetMapping(routingRules, listenersByName, pathMapsByName)
+
+	// Blacklist takes priority
+	if len(*blacklist) > 0 {
+		// Apply blacklist
+		for _, setting := range *newHTTPSettings {
+			target := settingNameToTarget[*setting.Name]
+			if isTargetInList(target, blacklist) {
+				continue
+			}
+			managedSettings = append(managedSettings, setting)
+		}
+		return &managedSettings, nil
+	}
+
+	// Is it whitelisted
+	for _, setting := range *newHTTPSettings {
+		target := settingNameToTarget[*setting.Name]
+		if isTargetInList(target, whitelist) {
+			managedSettings = append(managedSettings, setting)
+		}
+	}
+
+	for _, setting := range *newHTTPSettings {
+		target := settingNameToTarget[*setting.Name]
+		if isTargetInList(target, blacklist) {
+			managedSettings = append(managedSettings, setting)
+		}
+	}
+
+	return &managedSettings, nil
+}
+
+func (c appGwConfigBuilder) getListenersByName(cbCtx *ConfigBuilderContext) brownfield.ListenersByName {
+	listeners := make(map[string]*n.ApplicationGatewayHTTPListener)
+	_, listenerMap := c.getListeners(cbCtx)
+	for _, listener := range listenerMap {
+		listeners[*listener.Name] = listener
+	}
+	return listeners
+}
+
+func (c appGwConfigBuilder) getPathsByName(cbCtx *ConfigBuilderContext) brownfield.URLPathMapByName {
+	_, paths := c.getRules(cbCtx)
+	pathMap := make(map[string]n.ApplicationGatewayURLPathMap)
+	for _, path := range paths {
+		pathMap[*path.Name] = path
+	}
+	return pathMap
+}
+
+func mergeSettings(s1 *[]n.ApplicationGatewayBackendHTTPSettings, s2 *[]n.ApplicationGatewayBackendHTTPSettings) *[]n.ApplicationGatewayBackendHTTPSettings {
+	var merged []n.ApplicationGatewayBackendHTTPSettings
+	for _, s := range *s1 {
+		merged = append(merged, s)
+	}
+	for _, s := range *s2 {
+		merged = append(merged, s)
+	}
+	return &merged
+}
+
+func newBackendIdsFiltered(cbCtx *ConfigBuilderContext) map[backendIdentifier]interface{} {
 	backendIDs := make(map[backendIdentifier]interface{})
-	for _, ingress := range ingressList {
+	for _, ingress := range cbCtx.IngressList {
 		if ingress.Spec.Backend != nil {
 			backendID := generateBackendID(ingress, nil, nil, ingress.Spec.Backend)
 			glog.V(3).Info("Found default backend:", backendID.serviceKey())
@@ -52,7 +179,7 @@ func newBackendIdsFiltered(ingressList []*v1beta1.Ingress, serviceList []*v1.Ser
 	}
 
 	finalBackendIDs := make(map[backendIdentifier]interface{})
-	serviceSet := newServiceSet(&serviceList)
+	serviceSet := newServiceSet(&cbCtx.ServiceList)
 	// Filter out backends, where Ingresses reference non-existent Services
 	for be := range backendIDs {
 		if _, exists := serviceSet[be.serviceKey()]; !exists {
@@ -74,13 +201,13 @@ func newServiceSet(services *[]*v1.Service) map[string]*v1.Service {
 	return servicesSet
 }
 
-func (c *appGwConfigBuilder) getBackendsAndSettingsMap(ingressList []*v1beta1.Ingress, serviceList []*v1.Service) (*[]n.ApplicationGatewayBackendHTTPSettings, map[backendIdentifier]*n.ApplicationGatewayBackendHTTPSettings, map[backendIdentifier]serviceBackendPortPair, error) {
+func (c *appGwConfigBuilder) getBackendsAndSettingsMap(cbCtx *ConfigBuilderContext) (*[]n.ApplicationGatewayBackendHTTPSettings, map[backendIdentifier]*n.ApplicationGatewayBackendHTTPSettings, map[backendIdentifier]serviceBackendPortPair, error) {
 	serviceBackendPairsMap := make(map[backendIdentifier]map[serviceBackendPortPair]interface{})
 	backendHTTPSettingsMap := make(map[backendIdentifier]*n.ApplicationGatewayBackendHTTPSettings)
 	finalServiceBackendPairMap := make(map[backendIdentifier]serviceBackendPortPair)
 
 	var unresolvedBackendID []backendIdentifier
-	for backendID := range newBackendIdsFiltered(ingressList, serviceList) {
+	for backendID := range newBackendIdsFiltered(cbCtx) {
 		resolvedBackendPorts := make(map[serviceBackendPortPair]interface{})
 
 		service := c.k8sContext.GetService(backendID.serviceKey())
@@ -115,7 +242,7 @@ func (c *appGwConfigBuilder) getBackendsAndSettingsMap(ingressList []*v1beta1.In
 						}
 						resolvedBackendPorts[pair] = nil
 					} else {
-						// target port is defined as name or port number
+						// Target port is defined as name or port number
 						if sp.TargetPort.Type == intstr.Int {
 							// port is defined as port number
 							pair := serviceBackendPortPair{
@@ -187,26 +314,18 @@ func (c *appGwConfigBuilder) getBackendsAndSettingsMap(ingressList []*v1beta1.In
 		}
 
 		finalServiceBackendPairMap[backendID] = uniquePair
-		httpSettings := c.generateHTTPSettings(backendID, uniquePair.BackendPort, ingressList, serviceList)
+		httpSettings := c.generateHTTPSettings(backendID, uniquePair.BackendPort, cbCtx.IngressList, cbCtx.ServiceList)
 		httpSettingsCollection[*httpSettings.Name] = httpSettings
 		backendHTTPSettingsMap[backendID] = &httpSettings
 	}
 
+	// Convert the map into a list
 	httpSettings := make([]n.ApplicationGatewayBackendHTTPSettings, 0, len(httpSettingsCollection))
 	for _, backend := range httpSettingsCollection {
 		httpSettings = append(httpSettings, backend)
 	}
 
 	return &httpSettings, backendHTTPSettingsMap, finalServiceBackendPairMap, nil
-}
-
-func (c *appGwConfigBuilder) BackendHTTPSettingsCollection(cbCtx *ConfigBuilderContext) error {
-	httpSettings, _, _, err := c.getBackendsAndSettingsMap(cbCtx.IngressList, cbCtx.ServiceList)
-	if httpSettings != nil {
-		sort.Sort(sorter.BySettingsName(*httpSettings))
-	}
-	c.appGwConfig.BackendHTTPSettingsCollection = httpSettings
-	return err
 }
 
 func (c *appGwConfigBuilder) generateHTTPSettings(backendID backendIdentifier, port int32, ingressList []*v1beta1.Ingress, serviceList []*v1.Service) n.ApplicationGatewayBackendHTTPSettings {
@@ -221,7 +340,12 @@ func (c *appGwConfigBuilder) generateHTTPSettings(backendID backendIdentifier, p
 		},
 	}
 
-	_, probesMap := c.newProbesMap(ingressList, serviceList)
+	cbCtx := &ConfigBuilderContext{
+		ServiceList: serviceList,
+		IngressList: ingressList,
+	}
+
+	_, probesMap := c.newProbesMap(cbCtx)
 
 	if probesMap[backendID] != nil {
 		probeName := probesMap[backendID].Name

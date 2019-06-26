@@ -13,14 +13,13 @@ import (
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/glog"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/annotations"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/sorter"
 )
 
-func (c *appGwConfigBuilder) newProbesMap(ingressList []*v1beta1.Ingress, serviceList []*v1.Service) (map[string]n.ApplicationGatewayProbe, map[backendIdentifier]*n.ApplicationGatewayProbe) {
+func (c *appGwConfigBuilder) newProbesMap(cbCtx *ConfigBuilderContext) (map[string]n.ApplicationGatewayProbe, map[backendIdentifier]*n.ApplicationGatewayProbe) {
 	healthProbeCollection := make(map[string]n.ApplicationGatewayProbe)
 	probesMap := make(map[backendIdentifier]*n.ApplicationGatewayProbe)
 	defaultProbe := defaultProbe()
@@ -28,7 +27,7 @@ func (c *appGwConfigBuilder) newProbesMap(ingressList []*v1beta1.Ingress, servic
 	glog.V(5).Info("Adding default probe:", *defaultProbe.Name)
 	healthProbeCollection[*defaultProbe.Name] = defaultProbe
 
-	for backendID := range newBackendIdsFiltered(ingressList, serviceList) {
+	for backendID := range newBackendIdsFiltered(cbCtx) {
 		probe := c.generateHealthProbe(backendID)
 
 		if probe != nil {
@@ -44,15 +43,54 @@ func (c *appGwConfigBuilder) newProbesMap(ingressList []*v1beta1.Ingress, servic
 }
 
 func (c *appGwConfigBuilder) HealthProbesCollection(cbCtx *ConfigBuilderContext) error {
-	healthProbeCollection, _ := c.newProbesMap(cbCtx.IngressList, cbCtx.ServiceList)
+	healthProbeCollection, _ := c.newProbesMap(cbCtx)
 	glog.V(5).Infof("Will create %d App Gateway probes.", len(healthProbeCollection))
 	probes := make([]n.ApplicationGatewayProbe, 0, len(healthProbeCollection))
 	for _, probe := range healthProbeCollection {
 		probes = append(probes, probe)
 	}
-	sort.Sort(sorter.ByHealthProbeName(probes))
-	c.appGwConfig.Probes = &probes
+	newManagedProbes := getManagedProbes(probes, cbCtx)
+	var existingProbes []n.ApplicationGatewayProbe
+	if c.appGwConfig.Probes != nil {
+		existingProbes = *c.appGwConfig.Probes
+	}
+	existingPruned := pruneManagedProbes(existingProbes, cbCtx)
+	mergedProbes := mergeProbes(existingPruned, newManagedProbes)
+	sort.Sort(sorter.ByHealthProbeName(mergedProbes))
+	c.appGwConfig.Probes = &mergedProbes
 	return nil
+}
+
+func mergeProbes(probesBuckets ...[]n.ApplicationGatewayProbe) []n.ApplicationGatewayProbe {
+	uniqProbes := make(map[string]n.ApplicationGatewayProbe)
+	for _, bucket := range probesBuckets {
+		for _, p := range bucket {
+			uniqProbes[*p.Name] = p
+		}
+	}
+	var merged []n.ApplicationGatewayProbe
+	for _, probe := range uniqProbes {
+		merged = append(merged, probe)
+	}
+	return merged
+}
+
+func pruneManagedProbes(probes []n.ApplicationGatewayProbe, kr *ConfigBuilderContext) []n.ApplicationGatewayProbe {
+	manageable := getManagedProbes(probes, kr)
+	if manageable == nil {
+		return probes
+	}
+	indexed := make(map[string]n.ApplicationGatewayProbe)
+	for _, probe := range manageable {
+		indexed[*probe.Name] = probe
+	}
+	var unmanagedProbes []n.ApplicationGatewayProbe
+	for _, probe := range probes {
+		if _, isManaged := indexed[*probe.Name]; !isManaged {
+			unmanagedProbes = append(unmanagedProbes, probe)
+		}
+	}
+	return unmanagedProbes
 }
 
 func (c *appGwConfigBuilder) generateHealthProbe(backendID backendIdentifier) *n.ApplicationGatewayProbe {

@@ -30,19 +30,20 @@ type ConfigBuilder interface {
 }
 
 type appGwConfigBuilder struct {
-	k8sContext      *k8scontext.Context
-	appGwIdentifier Identifier
-	appGwConfig     n.ApplicationGatewayPropertiesFormat
-	recorder        record.EventRecorder
+	k8sContext *k8scontext.Context
+
+	appGwIdentifier *Identifier
+	appGwConfig     *n.ApplicationGatewayPropertiesFormat
+
+	recorder record.EventRecorder
 }
 
 // NewConfigBuilder construct a builder
 func NewConfigBuilder(context *k8scontext.Context, appGwIdentifier *Identifier, originalConfig *n.ApplicationGatewayPropertiesFormat, recorder record.EventRecorder) ConfigBuilder {
 	return &appGwConfigBuilder{
-		// TODO(draychev): Decommission internal state
 		k8sContext:      context,
-		appGwIdentifier: *appGwIdentifier,
-		appGwConfig:     *originalConfig,
+		appGwIdentifier: appGwIdentifier,
+		appGwConfig:     originalConfig,
 		recorder:        recorder,
 	}
 }
@@ -101,7 +102,7 @@ func generateListenerID(rule *v1beta1.IngressRule,
 
 // GetApplicationGatewayPropertiesFormatPtr gets a pointer to updated ApplicationGatewayPropertiesFormat.
 func (c *appGwConfigBuilder) GetApplicationGatewayPropertiesFormatPtr() *n.ApplicationGatewayPropertiesFormat {
-	return &c.appGwConfig
+	return c.appGwConfig
 }
 
 type valFunc func(eventRecorder record.EventRecorder, config *n.ApplicationGatewayPropertiesFormat, envVariables environment.EnvVariables, ingressList []*v1beta1.Ingress, serviceList []*v1.Service) error
@@ -127,7 +128,7 @@ func (c *appGwConfigBuilder) PostBuildValidate(cbCtx *ConfigBuilderContext) erro
 
 func (c *appGwConfigBuilder) runValidationFunctions(cbCtx *ConfigBuilderContext, validationFunctions []valFunc) error {
 	for _, fn := range validationFunctions {
-		if err := fn(c.recorder, &c.appGwConfig, cbCtx.EnvVariables, cbCtx.IngressList, cbCtx.ServiceList); err != nil {
+		if err := fn(c.recorder, c.appGwConfig, cbCtx.EnvVariables, cbCtx.IngressList, cbCtx.ServiceList); err != nil {
 			return err
 		}
 	}

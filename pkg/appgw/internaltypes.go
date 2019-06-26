@@ -191,7 +191,7 @@ func defaultBackendAddressPool() *n.ApplicationGatewayBackendAddressPool {
 	}
 }
 
-func defaultFrontendListenerIdentifier() listenerIdentifier {
+func defaultFrontendlistenerIdentifier() listenerIdentifier {
 	return listenerIdentifier{
 		FrontendPort: int32(80),
 		HostName:     "",

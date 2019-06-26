@@ -54,7 +54,7 @@ func (c *appGwConfigBuilder) getListenerConfigs(ingressList []*v1beta1.Ingress) 
 
 	// App Gateway must have at least one listener - the default one!
 	if len(allListeners) == 0 {
-		allListeners[defaultFrontendListenerIdentifier()] = listenerAzConfig{
+		allListeners[defaultFrontendlistenerIdentifier()] = listenerAzConfig{
 			// Default protocol
 			Protocol: n.HTTP,
 		}

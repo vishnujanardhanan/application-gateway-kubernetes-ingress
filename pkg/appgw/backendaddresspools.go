@@ -9,25 +9,104 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/brownfield"
+	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/events"
+	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/sorter"
+	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/utils"
 	n "github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-12-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/glog"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/api/extensions/v1beta1"
-
-	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/events"
-	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/sorter"
 )
 
-func (c *appGwConfigBuilder) newBackendPoolMap(ingressList []*v1beta1.Ingress, serviceList []*v1.Service) map[backendIdentifier]*n.ApplicationGatewayBackendAddressPool {
+func (c *appGwConfigBuilder) BackendAddressPools(cbCtx *ConfigBuilderContext) error {
 	defaultPool := defaultBackendAddressPool()
 	addressPools := map[string]*n.ApplicationGatewayBackendAddressPool{
 		*defaultPool.Name: defaultPool,
 	}
-	backendPoolMap := make(map[backendIdentifier]*n.ApplicationGatewayBackendAddressPool)
-	_, _, serviceBackendPairMap, _ := c.getBackendsAndSettingsMap(ingressList, serviceList)
+
+	_, _, serviceBackendPairMap, _ := c.getBackendsAndSettingsMap(cbCtx)
+
 	for backendID, serviceBackendPair := range serviceBackendPairMap {
+		if pool := c.getBackendAddressPool(backendID, serviceBackendPair, addressPools); pool != nil {
+			addressPools[*pool.Name] = pool
+		}
+	}
+
+	pools := getBackendPoolMapValues(&addressPools)
+	newManaged := c.getNewManagedPools(*pools, cbCtx)
+
+	var existingPools []n.ApplicationGatewayBackendAddressPool
+	if c.appGwConfig.BackendAddressPools != nil {
+		existingPools = *c.appGwConfig.BackendAddressPools
+	}
+
+	existingUnmanaged := c.pruneManagedPools(existingPools, cbCtx)
+	mergedPools := mergePools(existingUnmanaged, newManaged)
+
+	sort.Sort(sorter.ByBackendPoolName(mergedPools))
+
+	c.appGwConfig.BackendAddressPools = &mergedPools
+	return nil
+}
+
+func (c appGwConfigBuilder) getPoolToTargetMapping(cbCtx *ConfigBuilderContext) map[string]brownfield.Target {
+	listeners := make(map[string]*n.ApplicationGatewayHTTPListener)
+	_, listenerMap := c.getListeners(cbCtx)
+	for _, listener := range listenerMap {
+		listeners[*listener.Name] = listener
+	}
+
+	poolToTarget := make(map[string]brownfield.Target)
+	requestRoutingRules, paths := c.getRules(cbCtx)
+
+	pathMap := make(map[string]n.ApplicationGatewayURLPathMap)
+	for _, path := range paths {
+		pathMap[*path.Name] = path
+	}
+
+	for _, rule := range requestRoutingRules {
+		listenerName := utils.GetLastChunkOfSlashed(*rule.HTTPListener.ID)
+		port := int32(80)
+		if listeners[listenerName].Protocol == n.HTTPS {
+			port = 443
+		}
+		if rule.URLPathMap == nil {
+			t := brownfield.Target{
+				Host: *listeners[listenerName].HostName,
+				Port: port,
+			}
+			poolToTarget[utils.GetLastChunkOfSlashed(*rule.BackendAddressPool.ID)] = t
+		} else {
+			pathMapName := utils.GetLastChunkOfSlashed(*rule.URLPathMap.ID)
+			for _, pathRule := range *pathMap[pathMapName].PathRules {
+				for _, path := range *pathRule.Paths {
+					t := brownfield.Target{
+						Host: *listeners[listenerName].HostName,
+						Port: port,
+						Path: &path,
+					}
+					poolToTarget[utils.GetLastChunkOfSlashed(*pathRule.BackendAddressPool.ID)] = t
+				}
+			}
+		}
+	}
+	return poolToTarget
+}
+
+func (c *appGwConfigBuilder) newBackendPoolMap(cbCtx *ConfigBuilderContext) map[backendIdentifier]*n.ApplicationGatewayBackendAddressPool {
+	defaultPool := defaultBackendAddressPool()
+	addressPools := map[string]*n.ApplicationGatewayBackendAddressPool{
+		*defaultPool.Name: defaultPool,
+	}
+
+	backendPoolMap := make(map[backendIdentifier]*n.ApplicationGatewayBackendAddressPool)
+
+	_, _, serviceBackendPairMap, _ := c.getBackendsAndSettingsMap(cbCtx)
+	for backendID, serviceBackendPair := range serviceBackendPairMap {
+		glog.V(5).Info("Constructing backend pool for service:", backendID.serviceKey())
 		backendPoolMap[backendID] = defaultPool
+
 		if pool := c.getBackendAddressPool(backendID, serviceBackendPair, addressPools); pool != nil {
 			backendPoolMap[backendID] = pool
 		}
@@ -35,24 +114,36 @@ func (c *appGwConfigBuilder) newBackendPoolMap(ingressList []*v1beta1.Ingress, s
 	return backendPoolMap
 }
 
-func (c *appGwConfigBuilder) BackendAddressPools(cbCtx *ConfigBuilderContext) error {
-	defaultPool := defaultBackendAddressPool()
-	addressPools := map[string]*n.ApplicationGatewayBackendAddressPool{
-		*defaultPool.Name: defaultPool,
-	}
-	_, _, serviceBackendPairMap, _ := c.getBackendsAndSettingsMap(cbCtx.IngressList, cbCtx.ServiceList)
-	for backendID, serviceBackendPair := range serviceBackendPairMap {
-		glog.V(5).Info("Constructing backend pool for service:", backendID.serviceKey())
-		if pool := c.getBackendAddressPool(backendID, serviceBackendPair, addressPools); pool != nil {
-			addressPools[*pool.Name] = pool
+func mergePools(probesBuckets ...[]n.ApplicationGatewayBackendAddressPool) []n.ApplicationGatewayBackendAddressPool {
+	uniqProbes := make(map[string]n.ApplicationGatewayBackendAddressPool)
+	for _, bucket := range probesBuckets {
+		for _, p := range bucket {
+			uniqProbes[*p.Name] = p
 		}
 	}
-	pools := getBackendPoolMapValues(&addressPools)
-	if pools != nil {
-		sort.Sort(sorter.ByBackendPoolName(*pools))
+	var merged []n.ApplicationGatewayBackendAddressPool
+	for _, probe := range uniqProbes {
+		merged = append(merged, probe)
 	}
-	c.appGwConfig.BackendAddressPools = pools
-	return nil
+	return merged
+}
+
+func (c appGwConfigBuilder) pruneManagedPools(pools []n.ApplicationGatewayBackendAddressPool, kr *ConfigBuilderContext) []n.ApplicationGatewayBackendAddressPool {
+	managedPool := c.getNewManagedPools(pools, kr)
+	if managedPool == nil {
+		return pools
+	}
+	indexed := make(map[string]n.ApplicationGatewayBackendAddressPool)
+	for _, pool := range managedPool {
+		indexed[*pool.Name] = pool
+	}
+	var unmanagedPools []n.ApplicationGatewayBackendAddressPool
+	for _, probe := range pools {
+		if _, isManaged := indexed[*probe.Name]; !isManaged {
+			unmanagedPools = append(unmanagedPools, probe)
+		}
+	}
+	return unmanagedPools
 }
 
 func getBackendPoolMapValues(m *map[string]*n.ApplicationGatewayBackendAddressPool) *[]n.ApplicationGatewayBackendAddressPool {

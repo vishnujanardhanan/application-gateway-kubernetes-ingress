@@ -15,6 +15,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/api/extensions/v1beta1"
 
+	ptv1 "github.com/Azure/application-gateway-kubernetes-ingress/pkg/apis/azureingressprohibitedtarget/v1"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/tests"
 )
 
@@ -27,6 +28,27 @@ var _ = Describe("configure App Gateway health probes", func() {
 	Context("create probes", func() {
 		cb := newConfigBuilderFixture(nil)
 
+		// This is a probe that (we pretend to) have created manually and we expect that with proper configuration
+		// ingress controller will not delete it.
+		manuallyCreatedProbe := n.ApplicationGatewayProbe{
+			Name: to.StringPtr("a-probe-for-a-prohibited-Target"),
+			ApplicationGatewayProbePropertiesFormat: &n.ApplicationGatewayProbePropertiesFormat{
+				Protocol:                            n.HTTP,
+				Host:                                to.StringPtr("www.prohibited.com"),
+				Path:                                to.StringPtr("/"),
+				Interval:                            to.Int32Ptr(30),
+				Timeout:                             to.Int32Ptr(30),
+				UnhealthyThreshold:                  to.Int32Ptr(3),
+				PickHostNameFromBackendHTTPSettings: nil,
+				MinServers:                          nil,
+				Match:                               nil,
+				ProvisioningState:                   nil,
+			},
+		}
+		cb.appGwConfig.Probes = &[]n.ApplicationGatewayProbe{
+			manuallyCreatedProbe,
+		}
+
 		endpoints := tests.NewEndpointsFixture()
 		_ = cb.k8sContext.Caches.Endpoints.Add(endpoints)
 
@@ -36,13 +58,25 @@ var _ = Describe("configure App Gateway health probes", func() {
 		pod := tests.NewPodFixture(tests.ServiceName, tests.Namespace, tests.ContainerName, tests.ContainerPort)
 		_ = cb.k8sContext.Caches.Pods.Add(pod)
 
-		cbCtx := &ConfigBuilderContext{
+		// This ProhibitedTarget informs Ingress Controller NOT to mutate/delete settings for the given host/port
+		prohibitedTarget1 := ptv1.AzureIngressProhibitedTarget{
+			Spec: ptv1.AzureIngressProhibitedTargetSpec{
+				Hostname: "www.prohibited.com",
+				Port:     80,
+			},
+		}
+
+		cbCtx := ConfigBuilderContext{
 			IngressList: ingressList,
 			ServiceList: serviceList,
+			ProhibitedTargets: []*ptv1.AzureIngressProhibitedTarget{
+				&prohibitedTarget1,
+			},
 		}
 
 		// !! Action !!
-		_ = cb.HealthProbesCollection(cbCtx)
+		_ = cb.HealthProbesCollection(&cbCtx)
+
 		actual := cb.appGwConfig.Probes
 
 		// We expect our health probe configurator to have arrived at this final setup
@@ -104,7 +138,7 @@ var _ = Describe("configure App Gateway health probes", func() {
 		}
 
 		It("should have exactly 3 records", func() {
-			Expect(len(*actual)).To(Equal(3))
+			Expect(len(*actual)).To(Equal(4))
 		})
 
 		It("should have created 1 default probe", func() {
@@ -117,6 +151,10 @@ var _ = Describe("configure App Gateway health probes", func() {
 
 		It("should have created 1 probe for OtherHost", func() {
 			Expect(*actual).To(ContainElement(probeForOtherHost))
+		})
+
+		It("should have kept the 1 probe that was manually created", func() {
+			Expect(*actual).To(ContainElement(manuallyCreatedProbe))
 		})
 	})
 

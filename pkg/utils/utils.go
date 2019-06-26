@@ -40,3 +40,8 @@ func IntsToString(l []int, delim string) string {
 func GetResourceKey(namespace, name string) string {
 	return fmt.Sprintf("%v/%v", namespace, name)
 }
+
+func GetLastChunkOfSlashed(s string) string {
+	split := strings.Split(s, "/")
+	return split[len(split)-1]
+}
