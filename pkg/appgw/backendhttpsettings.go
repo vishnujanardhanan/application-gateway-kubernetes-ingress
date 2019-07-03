@@ -35,7 +35,7 @@ func (c *appGwConfigBuilder) BackendHTTPSettingsCollection(cbCtx *ConfigBuilderC
 	return err
 }
 
-func newBackendIdsFiltered(cbCtx *ConfigBuilderContext) map[backendIdentifier]interface{} {
+func newBackendIdsFiltered(cbCtx *ConfigBuilderContext) []backendIdentifier {
 	backendIDs := make(map[backendIdentifier]interface{})
 	for _, ingress := range cbCtx.IngressList {
 		if ingress.Spec.Backend != nil {
@@ -70,6 +70,9 @@ func newBackendIdsFiltered(cbCtx *ConfigBuilderContext) map[backendIdentifier]in
 		}
 		finalBackendIDs[be] = nil
 	}
+
+	sort.Sort(sorter.ByBackendID(finalBackendIDs))
+
 	return finalBackendIDs
 }
 

@@ -30,3 +30,6 @@ func getIPFQDNKey(record n.ApplicationGatewayBackendAddress) string {
 	}
 	return fmt.Sprintf("%s-%s", fqdn, ip)
 }
+
+// ByBackendID is a facility to sort
+type ByBackendID []backendid
