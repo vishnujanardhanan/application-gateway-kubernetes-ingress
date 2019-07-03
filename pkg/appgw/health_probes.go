@@ -17,6 +17,7 @@ import (
 
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/annotations"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/sorter"
+	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/utils"
 )
 
 func (c *appGwConfigBuilder) HealthProbesCollection(cbCtx *ConfigBuilderContext) error {
@@ -61,7 +62,6 @@ func (c *appGwConfigBuilder) generateHealthProbe(backendID backendIdentifier) *n
 		return nil
 	}
 	probe := defaultProbe()
-	probe.Name = to.StringPtr(generateProbeName(backendID.Path.Backend.ServiceName, backendID.Path.Backend.ServicePort.String(), backendID.Ingress))
 	if backendID.Rule != nil && len(backendID.Rule.Host) != 0 {
 		probe.Host = to.StringPtr(backendID.Rule.Host)
 	}
@@ -94,6 +94,9 @@ func (c *appGwConfigBuilder) generateHealthProbe(backendID backendIdentifier) *n
 			probe.UnhealthyThreshold = to.Int32Ptr(k8sProbeForServiceContainer.FailureThreshold)
 		}
 	}
+
+	suffix := fmt.Sprintf("%s-%s", utils.EncodeResourceName(*probe.Host), utils.EncodeResourceName(*probe.Path))
+	probe.Name = to.StringPtr(generateProbeName(backendID.Path.Backend.ServiceName, backendID.Path.Backend.ServicePort.String(), backendID.Ingress, suffix))
 
 	return &probe
 }

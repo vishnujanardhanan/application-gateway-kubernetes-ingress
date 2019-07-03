@@ -6,6 +6,7 @@
 package utils
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -53,4 +54,12 @@ func PrettyJSON(js []byte, prefix string) ([]byte, error) {
 func GetLastChunkOfSlashed(s string) string {
 	split := strings.Split(s, "/")
 	return split[len(split)-1]
+}
+
+// EncodeResourceName applies base64 to resource names to ensure these are compatible with ARM requirements.
+func EncodeResourceName(content string) string {
+	// A resource can be up to 80 characters long. It must begin with a word character,
+	// and it must end with a word character or with '_'. The name may contain word
+	// characters or '.', '-', '_'."
+	return strings.TrimRight(base64.StdEncoding.EncodeToString([]byte(content)), "=")
 }

@@ -111,8 +111,8 @@ func generateHTTPSettingsName(serviceName string, servicePort string, backendPor
 	return formatPropName(fmt.Sprintf("%s%s-%v-%v-%v-%s", agPrefix, prefixHTTPSettings, serviceName, servicePort, backendPortNo, ingress))
 }
 
-func generateProbeName(serviceName string, servicePort string, ingress *v1beta1.Ingress) string {
-	return formatPropName(fmt.Sprintf("%s%s-%s-%v-%v-%s", agPrefix, prefixProbe, ingress.Namespace, serviceName, servicePort, ingress.Name))
+func generateProbeName(serviceName string, servicePort string, ingress *v1beta1.Ingress, suffix string) string {
+	return formatPropName(fmt.Sprintf("%s%s-%s-%v-%v-%s-%s", agPrefix, prefixProbe, ingress.Namespace, serviceName, servicePort, ingress.Name, suffix))
 }
 
 func generateAddressPoolName(serviceName string, servicePort string, backendPortNo int32) string {
