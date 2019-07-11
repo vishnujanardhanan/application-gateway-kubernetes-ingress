@@ -70,7 +70,6 @@ func (c *appGwConfigBuilder) generateHealthProbe(backendID backendIdentifier) *n
 		return nil
 	}
 	probe := defaultProbe(c.appGwIdentifier)
-	probe.Name = to.StringPtr(generateProbeName(backendID.Path.Backend.ServiceName, backendID.Path.Backend.ServicePort.String(), backendID.Ingress))
 	probe.ID = to.StringPtr(c.appGwIdentifier.probeID(*probe.Name))
 	if backendID.Rule != nil && len(backendID.Rule.Host) != 0 {
 		probe.Host = to.StringPtr(backendID.Rule.Host)
@@ -104,6 +103,8 @@ func (c *appGwConfigBuilder) generateHealthProbe(backendID backendIdentifier) *n
 			probe.UnhealthyThreshold = to.Int32Ptr(k8sProbeForServiceContainer.FailureThreshold)
 		}
 	}
+
+	probe.Name = to.StringPtr(generateProbeName(backendID.Path.Backend.ServiceName, backendID.Path.Backend.ServicePort.String(), backendID.Ingress, probe.Path))
 
 	return &probe
 }

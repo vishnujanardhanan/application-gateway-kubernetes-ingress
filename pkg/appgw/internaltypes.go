@@ -11,8 +11,10 @@ package appgw
 
 import (
 	"crypto/md5"
+	"encoding/base64"
 	"fmt"
 	"regexp"
+	"strings"
 
 	n "github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-12-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
@@ -128,8 +130,13 @@ func generateHTTPSettingsName(serviceName string, servicePort string, backendPor
 	return formatPropName(fmt.Sprintf("%s%s-%v-%v-%v-%s", agPrefix, prefixHTTPSettings, serviceName, servicePort, backendPortNo, ingress))
 }
 
-func generateProbeName(serviceName string, servicePort string, ingress *v1beta1.Ingress) string {
-	return formatPropName(fmt.Sprintf("%s%s-%s-%v-%v-%s", agPrefix, prefixProbe, ingress.Namespace, serviceName, servicePort, ingress.Name))
+func generateProbeName(serviceName string, servicePort string, ingress *v1beta1.Ingress, path *string) string {
+	pathSuffix := ""
+	if path != nil {
+		encoded := strings.TrimRight(base64.StdEncoding.EncodeToString([]byte(*path)), "=")
+		pathSuffix = fmt.Sprintf("-%s", encoded)
+	}
+	return formatPropName(fmt.Sprintf("%s%s-%s-%v-%v-%s%s", agPrefix, prefixProbe, ingress.Namespace, serviceName, servicePort, ingress.Name, pathSuffix))
 }
 
 func generateAddressPoolName(serviceName string, servicePort string, backendPortNo int32) string {
