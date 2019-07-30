@@ -27,7 +27,7 @@ func (c *AppGwIngressController) PruneIngress(appGw *n.ApplicationGateway, cbCtx
 		if cbCtx.EnvVariables.EnableBrownfieldDeployment == "true" {
 			pruneFuncList = append(pruneFuncList, pruneProhibitedIngress)
 		}
-		pruneFuncList = append(pruneFuncList, pruneNoPrivateIP)
+		pruneFuncList = append(pruneFuncList, []pruneFunc{pruneNoPrivateIP, pruneKubeSystemIngress}...)
 	})
 	prunedIngresses := cbCtx.IngressList
 	for _, prune := range pruneFuncList {
@@ -35,6 +35,18 @@ func (c *AppGwIngressController) PruneIngress(appGw *n.ApplicationGateway, cbCtx
 	}
 
 	return prunedIngresses
+}
+
+func pruneKubeSystemIngress(c *AppGwIngressController, appGw *n.ApplicationGateway, cbCtx *appgw.ConfigBuilderContext, ingressList []*v1beta1.Ingress) []*v1beta1.Ingress {
+	// Remove kube-system namespace ingresses
+	var ings []*v1beta1.Ingress
+	for _, ingress := range ingressList {
+		if ingress.Namespace == "kube-system" {
+			continue
+		}
+		ings = append(ings, ingress)
+	}
+	return ingressList
 }
 
 // pruneProhibitedIngress filters rules that are specified by prohibited target CRD
