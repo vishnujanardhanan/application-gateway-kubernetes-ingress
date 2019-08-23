@@ -58,7 +58,7 @@ func (c *appGwConfigBuilder) BackendHTTPSettingsCollection(cbCtx *ConfigBuilderC
 	return err
 }
 
-func newBackendIdsFiltered(cbCtx *ConfigBuilderContext) map[backendIdentifier]interface{} {
+func (c *appGwConfigBuilder) newBackendIdsFiltered(cbCtx *ConfigBuilderContext) map[backendIdentifier]interface{} {
 	backendIDs := make(map[backendIdentifier]interface{})
 	for _, ingress := range cbCtx.IngressList {
 		if ingress.Spec.Backend != nil {
@@ -93,6 +93,7 @@ func newBackendIdsFiltered(cbCtx *ConfigBuilderContext) map[backendIdentifier]in
 		}
 		finalBackendIDs[be] = nil
 	}
+
 	return finalBackendIDs
 }
 
@@ -111,7 +112,7 @@ func (c *appGwConfigBuilder) getBackendsAndSettingsMap(cbCtx *ConfigBuilderConte
 	finalServiceBackendPairMap := make(map[backendIdentifier]serviceBackendPortPair)
 
 	var unresolvedBackendID []backendIdentifier
-	for backendID := range newBackendIdsFiltered(cbCtx) {
+	for backendID := range c.newBackendIdsFiltered(cbCtx) {
 		resolvedBackendPorts := make(map[serviceBackendPortPair]interface{})
 
 		service := c.k8sContext.GetService(backendID.serviceKey())
@@ -121,8 +122,8 @@ func (c *appGwConfigBuilder) getBackendsAndSettingsMap(cbCtx *ConfigBuilderConte
 			c.recorder.Event(backendID.Ingress, v1.EventTypeWarning, events.ReasonServiceNotFound, logLine)
 			glog.Errorf(logLine)
 			pair := serviceBackendPortPair{
-				ServicePort: backendID.Backend.ServicePort.IntVal,
-				BackendPort: backendID.Backend.ServicePort.IntVal,
+				ServicePort: Port(backendID.Backend.ServicePort.IntVal),
+				BackendPort: Port(backendID.Backend.ServicePort.IntVal),
 			}
 			resolvedBackendPorts[pair] = nil
 		} else {
@@ -141,8 +142,8 @@ func (c *appGwConfigBuilder) getBackendsAndSettingsMap(cbCtx *ConfigBuilderConte
 					if sp.TargetPort.String() == "" {
 						// targetPort is not defined, by default targetPort == port
 						pair := serviceBackendPortPair{
-							ServicePort: sp.Port,
-							BackendPort: sp.Port,
+							ServicePort: Port(sp.Port),
+							BackendPort: Port(sp.Port),
 						}
 						resolvedBackendPorts[pair] = nil
 					} else {
@@ -150,8 +151,8 @@ func (c *appGwConfigBuilder) getBackendsAndSettingsMap(cbCtx *ConfigBuilderConte
 						if sp.TargetPort.Type == intstr.Int {
 							// port is defined as port number
 							pair := serviceBackendPortPair{
-								ServicePort: sp.Port,
-								BackendPort: sp.TargetPort.IntVal,
+								ServicePort: Port(sp.Port),
+								BackendPort: Port(sp.TargetPort.IntVal),
 							}
 							resolvedBackendPorts[pair] = nil
 						} else {
@@ -160,8 +161,8 @@ func (c *appGwConfigBuilder) getBackendsAndSettingsMap(cbCtx *ConfigBuilderConte
 							targetPortsResolved := c.resolvePortName(sp.Name, &backendID)
 							for targetPort := range targetPortsResolved {
 								pair := serviceBackendPortPair{
-									ServicePort: sp.Port,
-									BackendPort: targetPort,
+									ServicePort: Port(sp.Port),
+									BackendPort: Port(targetPort),
 								}
 								resolvedBackendPorts[pair] = nil
 							}
@@ -229,7 +230,7 @@ func (c *appGwConfigBuilder) getBackendsAndSettingsMap(cbCtx *ConfigBuilderConte
 	return httpSettings, backendHTTPSettingsMap, finalServiceBackendPairMap, nil
 }
 
-func (c *appGwConfigBuilder) generateHTTPSettings(backendID backendIdentifier, port int32, cbCtx *ConfigBuilderContext) n.ApplicationGatewayBackendHTTPSettings {
+func (c *appGwConfigBuilder) generateHTTPSettings(backendID backendIdentifier, port Port, cbCtx *ConfigBuilderContext) n.ApplicationGatewayBackendHTTPSettings {
 	httpSettingsName := generateHTTPSettingsName(backendID.serviceFullName(), backendID.Backend.ServicePort.String(), port, backendID.Ingress.Name)
 	glog.V(5).Infof("Created a new HTTP setting w/ name: %s\n", httpSettingsName)
 	httpSettings := n.ApplicationGatewayBackendHTTPSettings{
@@ -238,7 +239,7 @@ func (c *appGwConfigBuilder) generateHTTPSettings(backendID backendIdentifier, p
 		ID:   to.StringPtr(c.appGwIdentifier.httpSettingsID(httpSettingsName)),
 		ApplicationGatewayBackendHTTPSettingsPropertiesFormat: &n.ApplicationGatewayBackendHTTPSettingsPropertiesFormat{
 			Protocol: n.HTTP,
-			Port:     &port,
+			Port:     to.Int32Ptr(int32(port)),
 		},
 	}
 

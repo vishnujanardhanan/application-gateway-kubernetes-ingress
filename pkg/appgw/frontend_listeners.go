@@ -66,7 +66,7 @@ func (c *appGwConfigBuilder) getListenerConfigs(cbCtx *ConfigBuilderContext) map
 	allListeners := make(map[listenerIdentifier]listenerAzConfig)
 	for _, ingress := range cbCtx.IngressList {
 		glog.V(5).Infof("Processing Rules for Ingress: %s/%s", ingress.Namespace, ingress.Name)
-		_, azListenerConfigs := c.processIngressRules(ingress, cbCtx.EnvVariables)
+		azListenerConfigs := c.getListenersFromIngress(ingress, cbCtx.EnvVariables)
 		for listenerID, azConfig := range azListenerConfigs {
 			allListeners[listenerID] = azConfig
 		}
@@ -107,7 +107,7 @@ func (c *appGwConfigBuilder) groupListenersByListenerIdentifier(listeners *[]n.A
 	for idx, listener := range *listeners {
 		listenerID := listenerIdentifier{
 			HostName:     *listener.HostName,
-			FrontendPort: *c.lookupFrontendPortByID(listener.FrontendPort.ID).Port,
+			FrontendPort: Port(*c.lookupFrontendPortByID(listener.FrontendPort.ID).Port),
 			UsePrivateIP: IsPrivateIPConfiguration(LookupIPConfigurationByID(c.appGw.FrontendIPConfigurations, listener.FrontendIPConfiguration.ID)),
 		}
 		listenersByID[listenerID] = &((*listeners)[idx])

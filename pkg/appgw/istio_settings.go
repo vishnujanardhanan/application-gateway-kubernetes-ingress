@@ -58,7 +58,7 @@ func (c *appGwConfigBuilder) getIstioDestinationsAndSettingsMap(cbCtx *ConfigBui
 		resolvedBackendPorts := make(map[serviceBackendPortPair]interface{})
 
 		service := c.k8sContext.GetService(destinationID.serviceKey())
-		destinationPortNum := int32(destinationID.DestinationPort)
+		destinationPortNum := Port(destinationID.DestinationPort)
 		if service == nil {
 			// Once services are filtered in the istioMatchDestinationIDs function, this should never happen
 			logLine := fmt.Sprintf("Unable to get the service [%s]", destinationID.serviceKey())
@@ -79,13 +79,13 @@ func (c *appGwConfigBuilder) getIstioDestinationsAndSettingsMap(cbCtx *ConfigBui
 				}
 
 				// TODO(delqn): implement correctly port lookup by name
-				if sp.Port == destinationPortNum || sp.TargetPort.String() == fmt.Sprint(destinationPortNum) {
+				if Port(sp.Port) == destinationPortNum || sp.TargetPort.String() == fmt.Sprint(destinationPortNum) {
 					// matched a service port with a port from the service
 					if sp.TargetPort.String() == "" {
 						// targetPort is not defined, by default targetPort == port
 						pair := serviceBackendPortPair{
-							ServicePort: sp.Port,
-							BackendPort: sp.Port,
+							ServicePort: Port(sp.Port),
+							BackendPort: Port(sp.Port),
 						}
 						resolvedBackendPorts[pair] = nil
 					} else {
@@ -93,8 +93,8 @@ func (c *appGwConfigBuilder) getIstioDestinationsAndSettingsMap(cbCtx *ConfigBui
 						if sp.TargetPort.Type == intstr.Int {
 							// port is defined as port number
 							pair := serviceBackendPortPair{
-								ServicePort: sp.Port,
-								BackendPort: sp.TargetPort.IntVal,
+								ServicePort: Port(sp.Port),
+								BackendPort: Port(sp.TargetPort.IntVal),
 							}
 							resolvedBackendPorts[pair] = nil
 						} else {
@@ -104,8 +104,8 @@ func (c *appGwConfigBuilder) getIstioDestinationsAndSettingsMap(cbCtx *ConfigBui
 							targetPortsResolved := c.resolveIstioPortName(targetPortName, &destinationID)
 							for targetPort := range targetPortsResolved {
 								pair := serviceBackendPortPair{
-									ServicePort: sp.Port,
-									BackendPort: targetPort,
+									ServicePort: Port(sp.Port),
+									BackendPort: Port(targetPort),
 								}
 								resolvedBackendPorts[pair] = nil
 							}
@@ -173,7 +173,7 @@ func (c *appGwConfigBuilder) getIstioDestinationsAndSettingsMap(cbCtx *ConfigBui
 	return httpSettings, backendHTTPSettingsMap, finalServiceBackendPairMap, nil
 }
 
-func (c *appGwConfigBuilder) generateIstioHTTPSettings(destinationID istioDestinationIdentifier, port int32, cbCtx *ConfigBuilderContext) n.ApplicationGatewayBackendHTTPSettings {
+func (c *appGwConfigBuilder) generateIstioHTTPSettings(destinationID istioDestinationIdentifier, port Port, cbCtx *ConfigBuilderContext) n.ApplicationGatewayBackendHTTPSettings {
 	backendServicePort := ""
 	if destinationID.DestinationPort != 0 {
 		backendServicePort = fmt.Sprint(destinationID.DestinationPort)
@@ -188,7 +188,7 @@ func (c *appGwConfigBuilder) generateIstioHTTPSettings(destinationID istioDestin
 		ID:   to.StringPtr(c.appGwIdentifier.httpSettingsID(httpSettingsName)),
 		ApplicationGatewayBackendHTTPSettingsPropertiesFormat: &n.ApplicationGatewayBackendHTTPSettingsPropertiesFormat{
 			Protocol: n.HTTP,
-			Port:     &port,
+			Port:     to.Int32Ptr(int32(port)),
 		},
 	}
 

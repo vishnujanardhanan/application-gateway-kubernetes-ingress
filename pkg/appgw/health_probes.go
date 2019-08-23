@@ -49,7 +49,7 @@ func (c *appGwConfigBuilder) newProbesMap(cbCtx *ConfigBuilderContext) (map[stri
 	glog.V(5).Info("Adding default probe:", *defaultProbe.Name)
 	healthProbeCollection[*defaultProbe.Name] = defaultProbe
 
-	for backendID := range newBackendIdsFiltered(cbCtx) {
+	for backendID := range c.newBackendIdsFiltered(cbCtx) {
 		probe := c.generateHealthProbe(backendID)
 
 		if probe != nil {
@@ -153,7 +153,7 @@ func (c *appGwConfigBuilder) getProbeForServiceContainer(service *v1.Service, ba
 			if _, ok := allPorts[port.ContainerPort]; !ok {
 				continue
 			}
-			
+
 			// found the container
 			var probe *v1.Probe
 			if container.ReadinessProbe != nil && container.ReadinessProbe.Handler.HTTPGet != nil {
@@ -174,7 +174,7 @@ func (c *appGwConfigBuilder) getProbeForServiceContainer(service *v1.Service, ba
 					}
 				}
 			}
-	
+
 			return probe
 		}
 	}

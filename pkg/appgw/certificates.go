@@ -65,6 +65,7 @@ func (c *appGwConfigBuilder) getSecretToCertificateMap(ingress *v1beta1.Ingress)
 			c.recorder.Event(ingress, v1.EventTypeWarning, events.ReasonSecretNotFound, logLine)
 		}
 	}
+
 	return secretIDCertificateMap
 }
 

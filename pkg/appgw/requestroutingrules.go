@@ -158,7 +158,7 @@ func (c *appGwConfigBuilder) getPathMaps(cbCtx *ConfigBuilderContext) map[listen
 }
 
 func (c *appGwConfigBuilder) getPathMap(cbCtx *ConfigBuilderContext, listenerID listenerIdentifier, listenerAzConfig listenerAzConfig, ingress *v1beta1.Ingress, rule *v1beta1.IngressRule) *n.ApplicationGatewayURLPathMap {
-	// initilize a path map for this listener if doesn't exists
+	// initialize a path map for this listener if doesn't exists
 	pathMap := n.ApplicationGatewayURLPathMap{
 		Etag: to.StringPtr("*"),
 		Name: to.StringPtr(generateURLPathMapName(listenerID)),
