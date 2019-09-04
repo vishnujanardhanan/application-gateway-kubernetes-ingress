@@ -25,18 +25,26 @@ func (c *appGwConfigBuilder) getListeners(cbCtx *ConfigBuilderContext) *[]n.Appl
 
 	if cbCtx.EnvVariables.EnableIstioIntegration {
 		for listenerID, config := range c.getListenerConfigsFromIstio(cbCtx.IstioGateways, cbCtx.IstioVirtualServices) {
-			listener := c.newListener(listenerID, config.Protocol)
-			listeners = append(listeners, listener)
+			listener, err := c.newListener(listenerID, config.Protocol)
+			if err != nil {
+				glog.Error("Error creating a listener: ", err)
+				continue
+			}
+			listeners = append(listeners, *listener)
 		}
 	}
 
 	for listenerID, config := range c.getListenerConfigs(cbCtx) {
-		listener := c.newListener(listenerID, config.Protocol)
+		listener, err := c.newListener(listenerID, config.Protocol)
+		if err != nil {
+			glog.Error("Error creating a listener: ", err)
+			continue
+		}
 		if config.Protocol == n.HTTPS {
 			sslCertificateID := c.appGwIdentifier.sslCertificateID(config.Secret.secretFullName())
 			listener.SslCertificate = resourceRef(sslCertificateID)
 		}
-		listeners = append(listeners, listener)
+		listeners = append(listeners, *listener)
 	}
 
 	if cbCtx.EnvVariables.EnableBrownfieldDeployment {
@@ -88,11 +96,14 @@ func (c *appGwConfigBuilder) getListenerConfigs(cbCtx *ConfigBuilderContext) map
 	return allListeners
 }
 
-func (c *appGwConfigBuilder) newListener(listenerID listenerIdentifier, protocol n.ApplicationGatewayProtocol) n.ApplicationGatewayHTTPListener {
-	frontIPConfiguration := *LookupIPConfigurationByType(c.appGw.FrontendIPConfigurations, listenerID.UsePrivateIP)
+func (c *appGwConfigBuilder) newListener(listenerID listenerIdentifier, protocol n.ApplicationGatewayProtocol) (*n.ApplicationGatewayHTTPListener, error) {
+	frontIPConfiguration := LookupIPConfigurationByType(c.appGw.FrontendIPConfigurations, listenerID.UsePrivateIP)
+	if frontIPConfiguration == nil {
+		return nil, ErrKeyNoPrivateIP
+	}
 	frontendPort := c.lookupFrontendPortByListenerIdentifier(listenerID)
 	listenerName := generateListenerName(listenerID)
-	return n.ApplicationGatewayHTTPListener{
+	listener := n.ApplicationGatewayHTTPListener{
 		Etag: to.StringPtr("*"),
 		Name: to.StringPtr(listenerName),
 		ID:   to.StringPtr(c.appGwIdentifier.listenerID(listenerName)),
@@ -104,6 +115,7 @@ func (c *appGwConfigBuilder) newListener(listenerID listenerIdentifier, protocol
 			HostName:                &listenerID.HostName,
 		},
 	}
+	return &listener, nil
 }
 
 func (c *appGwConfigBuilder) groupListenersByListenerIdentifier(listeners *[]n.ApplicationGatewayHTTPListener) map[listenerIdentifier]*n.ApplicationGatewayHTTPListener {

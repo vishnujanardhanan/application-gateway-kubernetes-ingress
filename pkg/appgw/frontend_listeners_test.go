@@ -107,7 +107,8 @@ var _ = Describe("Process ingress rules and parse frontend listener configs", fu
 			}
 
 			cb.appGw.FrontendPorts = cb.getFrontendPorts(cbCtx)
-			listener := cb.newListener(listener80, n.ApplicationGatewayProtocol("Https"))
+			listener, err := cb.newListener(listener80, n.ApplicationGatewayProtocol("Https"))
+			Expect(err).ToNot(HaveOccurred())
 			expectedName := agPrefix + "fl-bye.com-80"
 
 			expected := n.ApplicationGatewayHTTPListener{
@@ -123,7 +124,7 @@ var _ = Describe("Process ingress rules and parse frontend listener configs", fu
 				},
 			}
 
-			Expect(listener).To(Equal(expected))
+			Expect(*listener).To(Equal(expected))
 		})
 	})
 	Context("create a new App Gateway HTTP Listener with Private Ip when environment USE_PRIVATE_IP is true", func() {
@@ -149,7 +150,8 @@ var _ = Describe("Process ingress rules and parse frontend listener configs", fu
 			}
 			cb.appGw.FrontendPorts = cb.getFrontendPorts(cbCtx)
 			for listenerID, listenerAzConfig := range cb.getListenerConfigs(cbCtx) {
-				listener := cb.newListener(listenerID, listenerAzConfig.Protocol)
+				listener, err := cb.newListener(listenerID, listenerAzConfig.Protocol)
+				Expect(err).ToNot(HaveOccurred())
 				Expect(*listener.FrontendIPConfiguration.ID).To(Equal(tests.PrivateIPID))
 			}
 		})
@@ -175,7 +177,8 @@ var _ = Describe("Process ingress rules and parse frontend listener configs", fu
 				EnvVariables: envVariables,
 			}
 			cb.appGw.FrontendPorts = cb.getFrontendPorts(cbCtx)
-			listener := cb.newListener(listener80Private, n.ApplicationGatewayProtocol("Https"))
+			listener, err := cb.newListener(listener80Private, n.ApplicationGatewayProtocol("Https"))
+			Expect(err).ToNot(HaveOccurred())
 			expectedName := agPrefix + "fl-bye.com-80-privateip"
 
 			expected := n.ApplicationGatewayHTTPListener{
@@ -190,7 +193,7 @@ var _ = Describe("Process ingress rules and parse frontend listener configs", fu
 				},
 			}
 
-			Expect(listener).To(Equal(expected))
+			Expect(*listener).To(Equal(expected))
 		})
 	})
 })
