@@ -253,10 +253,10 @@ func NewProbeFixture(containerName string) *v1.Probe {
 }
 
 // NewPodFixture makes a new pod for testing
-func NewPodFixture(serviceName string, ingressNamespace string, containerName string, containerPort int32) *v1.Pod {
+func NewPodFixture(podName string, ingressNamespace string, containerName string, containerPort int32) *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceName,
+			Name:      podName,
 			Namespace: ingressNamespace,
 			Labels: map[string]string{
 				SelectorKey: SelectorValue,
@@ -265,7 +265,7 @@ func NewPodFixture(serviceName string, ingressNamespace string, containerName st
 		Spec: v1.PodSpec{
 			Containers: []v1.Container{
 				{
-					Name:  serviceName,
+					Name:  podName,
 					Image: "image",
 					Ports: []v1.ContainerPort{
 						{
