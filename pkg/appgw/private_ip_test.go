@@ -297,6 +297,7 @@ var _ = Describe("Tests `appgw.ConfigBuilder`", func() {
 --                "id": "*",
 --                "name": "*",
 --                "properties": {
+--                    "privateIPAddress": "a.b.c",
 --                    "publicIPAddress": {
 --                        "id": "x/y/z"
 --                    }
@@ -316,8 +317,8 @@ var _ = Describe("Tests `appgw.ConfigBuilder`", func() {
 --        "httpListeners": [
 --            {
 --                "etag": "*",
---                "id": "/subscriptions/--subscription--/resourceGroups/--resource-group--/providers/Microsoft.Network/applicationGateways/--app-gw-name--/httpListeners/fl-foo.baz-80",
---                "name": "fl-foo.baz-80",
+--                "id": "/subscriptions/--subscription--/resourceGroups/--resource-group--/providers/Microsoft.Network/applicationGateways/--app-gw-name--/httpListeners/fl-foo.baz-80-privateip",
+--                "name": "fl-foo.baz-80-privateip",
 --                "properties": {
 --                    "frontendIPConfiguration": {
 --                        "id": "*"
@@ -364,10 +365,10 @@ var _ = Describe("Tests `appgw.ConfigBuilder`", func() {
 --                "name": "rr-foo.baz-80",
 --                "properties": {
 --                    "httpListener": {
---                        "id": "/subscriptions/--subscription--/resourceGroups/--resource-group--/providers/Microsoft.Network/applicationGateways/--app-gw-name--/httpListeners/fl-foo.baz-80"
+--                        "id": "/subscriptions/--subscription--/resourceGroups/--resource-group--/providers/Microsoft.Network/applicationGateways/--app-gw-name--/httpListeners/fl-foo.baz-80-privateip"
 --                    },
 --                    "redirectConfiguration": {
---                        "id": "/subscriptions/--subscription--/resourceGroups/--resource-group--/providers/Microsoft.Network/applicationGateways/--app-gw-name--/redirectConfigurations/sslr-fl-foo.baz-443"
+--                        "id": "/subscriptions/--subscription--/resourceGroups/--resource-group--/providers/Microsoft.Network/applicationGateways/--app-gw-name--/redirectConfigurations/sslr-fl-foo.baz-443-privateip"
 --                    },
 --                    "ruleType": "Basic"
 --                }
