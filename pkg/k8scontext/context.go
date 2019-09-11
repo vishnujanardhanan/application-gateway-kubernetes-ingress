@@ -183,8 +183,9 @@ func (c *Context) ListServices() []*v1.Service {
 	return serviceList
 }
 
-// GetEndpointsByService returns the endpoints associated with a specific service.
-func (c *Context) GetEndpointsByService(serviceKey string) (*v1.Endpoints, error) {
+// LookupEndpointsByService returns the endpoints associated with a specific service.
+// Deprecated: LookupEndpointsByServiceHeaderMap is deprecated; Use GroupEndpointsByService instead.
+func (c *Context) LookupEndpointsByService(serviceKey string) (*v1.Endpoints, error) {
 	endpointsInterface, exist, err := c.Caches.Endpoints.GetByKey(serviceKey)
 
 	if err != nil {
@@ -198,6 +199,28 @@ func (c *Context) GetEndpointsByService(serviceKey string) (*v1.Endpoints, error
 	}
 
 	return endpointsInterface.(*v1.Endpoints), nil
+}
+
+// GroupEndpointsByService returns the endpoints associated with a specific service.
+func (c *Context) GroupEndpointsByService(serviceList []*v1.Service) (map[ServiceKey]*v1.Endpoints, error) {
+	endpointsByServiceKey := make(map[ServiceKey]*v1.Endpoints)
+	for _, svc := range serviceList {
+		serviceKey := fmt.Sprintf("%v/%v", svc.Namespace, svc.Name)
+		endpointsInterface, exist, err := c.Caches.Endpoints.GetByKey(serviceKey)
+		if err != nil {
+			glog.Error("Error fetching endpoints from store, error occurred ", err)
+			return nil, err
+		}
+
+		if !exist {
+			glog.Error("Error fetching endpoints from store! Service does not exist: ", serviceKey)
+			return nil, ErrorFetchingEnpdoints
+		}
+
+		endpointsByServiceKey[ServiceKey(serviceKey)] = endpointsInterface.(*v1.Endpoints)
+	}
+
+	return endpointsByServiceKey, nil
 }
 
 // ListPodsByServiceSelector returns pods that are associated with a specific service.
@@ -343,7 +366,7 @@ func (c *Context) GetEndpointsForVirtualService(virtualService v1alpha3.VirtualS
 	for _, httpRouteRule := range virtualService.Spec.HTTP {
 		for _, route := range httpRouteRule.Route {
 			serviceKey := fmt.Sprintf("%v/%v", namespace, route.Destination.Host)
-			endpoint, err := c.GetEndpointsByService(serviceKey)
+			endpoint, err := c.LookupEndpointsByService(serviceKey)
 			if err == nil {
 				endpointList = append(endpointList, *endpoint)
 			}

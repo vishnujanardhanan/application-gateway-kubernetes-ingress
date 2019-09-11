@@ -14,7 +14,7 @@ import (
 )
 
 func (c *appGwConfigBuilder) getIstioBackendAddressPool(destinationID istioDestinationIdentifier, serviceBackendPair serviceBackendPortPair, addressPools map[string]*n.ApplicationGatewayBackendAddressPool) *n.ApplicationGatewayBackendAddressPool {
-	endpoints, err := c.k8sContext.GetEndpointsByService(destinationID.serviceKey())
+	endpoints, err := c.k8sContext.LookupEndpointsByService(destinationID.serviceKey())
 	if err != nil {
 		logLine := fmt.Sprintf("Failed fetching endpoints for service: %s", destinationID.serviceKey())
 		glog.Errorf(logLine)

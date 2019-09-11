@@ -135,7 +135,7 @@ var _ = Describe("Test the creation of Backend Pools from Ingress definition", f
 		}
 
 		// -- Action --
-		actual := cb.getBackendAddressPool(backendID, serviceBackendPair, addressPools)
+		actual := cb.getBackendAddressPool(cbCtx, backendID, serviceBackendPair, addressPools)
 
 		It("should have constructed correct ApplicationGatewayBackendAddressPool", func() {
 			// The order here is deliberate -- ensure this is properly sorted
@@ -155,6 +155,7 @@ var _ = Describe("Test the creation of Backend Pools from Ingress definition", f
 					ProvisioningState: nil,
 				},
 			}
+			Expect(actual).ToNot(BeNil())
 			Expect(*actual).To(Equal(expected))
 		})
 	})

@@ -68,6 +68,57 @@ func newServiceSet(services *[]*v1.Service) map[string]*v1.Service {
 	return servicesSet
 }
 
+func (c *appGwConfigBuilder) resolvePorts(cbCtx *ConfigBuilderContext, backendID backendIdentifier) map[serviceBackendPortPair]interface{} {
+	resolvedBackendPorts := make(map[serviceBackendPortPair]interface{})
+
+	service := c.k8sContext.GetService(backendID.serviceKey())
+	if service == nil {
+		// This should never happen since newBackendIdsFiltered() already filters out backends for non-existent Services
+		logLine := fmt.Sprintf("Unable to get the service [%s]", backendID.serviceKey())
+		c.recorder.Event(backendID.Ingress, v1.EventTypeWarning, events.ReasonServiceNotFound, logLine)
+		glog.Errorf(logLine)
+		pair := serviceBackendPortPair{
+			ServicePort: Port(backendID.Backend.ServicePort.IntVal),
+			BackendPort: Port(backendID.Backend.ServicePort.IntVal),
+		}
+		resolvedBackendPorts[pair] = nil
+	} else {
+		for _, sp := range service.Spec.Ports {
+			if sp.Protocol != v1.ProtocolTCP {
+				continue
+			}
+
+			if fmt.Sprint(sp.Port) == backendID.Backend.ServicePort.String() ||
+				sp.Name == backendID.Backend.ServicePort.String() ||
+				sp.TargetPort.String() == backendID.Backend.ServicePort.String() {
+				continue
+			}
+
+			if sp.TargetPort.String() == "" {
+				// targetPort is not defined, by default targetPort == port
+				resolvedBackendPorts[serviceBackendPortPair{Port(sp.Port), Port(sp.Port)}] = nil
+				break
+			}
+
+			// target port is defined as name or port number
+			if sp.TargetPort.Type == intstr.Int {
+				// port is defined as port number
+				resolvedBackendPorts[serviceBackendPortPair{Port(sp.Port), Port(sp.TargetPort.IntVal)}] = nil
+				break
+			}
+
+			// if service port is defined by name, need to resolve
+			glog.V(5).Infof("resolving port name [%s] for service [%s] and service port [%s] for Ingress [%s]", sp.Name, backendID.serviceKey(), backendID.Backend.ServicePort.String(), backendID.Ingress.Name)
+			targetPortsResolved := c.resolvePortName(cbCtx, sp.Name, &backendID)
+			for targetPort := range targetPortsResolved {
+				resolvedBackendPorts[serviceBackendPortPair{Port(sp.Port), Port(targetPort)}] = nil
+			}
+		}
+	}
+
+	return resolvedBackendPorts
+}
+
 func (c *appGwConfigBuilder) getBackendsAndSettingsMap(cbCtx *ConfigBuilderContext) ([]n.ApplicationGatewayBackendHTTPSettings, map[backendIdentifier]*n.ApplicationGatewayBackendHTTPSettings, map[backendIdentifier]serviceBackendPortPair, error) {
 	if c.mem.settings != nil && c.mem.settingsByBackend != nil && c.mem.serviceBackendPairsByBackend != nil {
 		return *c.mem.settings, *c.mem.settingsByBackend, *c.mem.serviceBackendPairsByBackend, nil
@@ -79,66 +130,7 @@ func (c *appGwConfigBuilder) getBackendsAndSettingsMap(cbCtx *ConfigBuilderConte
 
 	var unresolvedBackendID []backendIdentifier
 	for backendID := range c.newBackendIdsFiltered(cbCtx) {
-		resolvedBackendPorts := make(map[serviceBackendPortPair]interface{})
-
-		service := c.k8sContext.GetService(backendID.serviceKey())
-		if service == nil {
-			// This should never happen since newBackendIdsFiltered() already filters out backends for non-existent Services
-			logLine := fmt.Sprintf("Unable to get the service [%s]", backendID.serviceKey())
-			c.recorder.Event(backendID.Ingress, v1.EventTypeWarning, events.ReasonServiceNotFound, logLine)
-			glog.Errorf(logLine)
-			pair := serviceBackendPortPair{
-				ServicePort: Port(backendID.Backend.ServicePort.IntVal),
-				BackendPort: Port(backendID.Backend.ServicePort.IntVal),
-			}
-			resolvedBackendPorts[pair] = nil
-		} else {
-			for _, sp := range service.Spec.Ports {
-				// find the backend port number
-				// check if any service ports matches the specified ports
-				if sp.Protocol != v1.ProtocolTCP {
-					// ignore UDP ports
-					continue
-				}
-				if fmt.Sprint(sp.Port) == backendID.Backend.ServicePort.String() ||
-					sp.Name == backendID.Backend.ServicePort.String() ||
-					sp.TargetPort.String() == backendID.Backend.ServicePort.String() {
-					// matched a service port with a port from the service
-
-					if sp.TargetPort.String() == "" {
-						// targetPort is not defined, by default targetPort == port
-						pair := serviceBackendPortPair{
-							ServicePort: Port(sp.Port),
-							BackendPort: Port(sp.Port),
-						}
-						resolvedBackendPorts[pair] = nil
-					} else {
-						// target port is defined as name or port number
-						if sp.TargetPort.Type == intstr.Int {
-							// port is defined as port number
-							pair := serviceBackendPortPair{
-								ServicePort: Port(sp.Port),
-								BackendPort: Port(sp.TargetPort.IntVal),
-							}
-							resolvedBackendPorts[pair] = nil
-						} else {
-							// if service port is defined by name, need to resolve
-							glog.V(5).Infof("resolving port name [%s] for service [%s] and service port [%s] for Ingress [%s]", sp.Name, backendID.serviceKey(), backendID.Backend.ServicePort.String(), backendID.Ingress.Name)
-							targetPortsResolved := c.resolvePortName(sp.Name, &backendID)
-							for targetPort := range targetPortsResolved {
-								pair := serviceBackendPortPair{
-									ServicePort: Port(sp.Port),
-									BackendPort: Port(targetPort),
-								}
-								resolvedBackendPorts[pair] = nil
-							}
-						}
-					}
-					break
-				}
-			}
-		}
-
+		resolvedBackendPorts := c.resolvePorts(cbCtx, backendID)
 		if len(resolvedBackendPorts) == 0 {
 			logLine := fmt.Sprintf("unable to resolve any backend port for service [%s] and service port [%s] for Ingress [%s]", backendID.serviceKey(), backendID.Backend.ServicePort.String(), backendID.Ingress.Name)
 			c.recorder.Event(backendID.Ingress, v1.EventTypeWarning, events.ReasonPortResolutionError, logLine)

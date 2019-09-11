@@ -56,7 +56,7 @@ func (c *appGwConfigBuilder) newProbesMap(cbCtx *ConfigBuilderContext) (map[stri
 	glog.V(5).Info("Created default HTTPS probe ", *defaultHTTPProbe.Name)
 
 	for backendID := range c.newBackendIdsFiltered(cbCtx) {
-		probe := c.generateHealthProbe(backendID)
+		probe := c.generateHealthProbe(cbCtx, backendID)
 
 		if probe != nil {
 			probesMap[backendID] = probe
@@ -75,7 +75,7 @@ func (c *appGwConfigBuilder) newProbesMap(cbCtx *ConfigBuilderContext) (map[stri
 	return healthProbeCollection, probesMap
 }
 
-func (c *appGwConfigBuilder) generateHealthProbe(backendID backendIdentifier) *n.ApplicationGatewayProbe {
+func (c *appGwConfigBuilder) generateHealthProbe(cbCtx *ConfigBuilderContext, backendID backendIdentifier) *n.ApplicationGatewayProbe {
 	// TODO(draychev): remove GetService
 	service := c.k8sContext.GetService(backendID.serviceKey())
 	if service == nil {
@@ -99,7 +99,7 @@ func (c *appGwConfigBuilder) generateHealthProbe(backendID backendIdentifier) *n
 		probe.Protocol = n.HTTPS
 	}
 
-	k8sProbeForServiceContainer := c.getProbeForServiceContainer(service, backendID)
+	k8sProbeForServiceContainer := c.getProbeForServiceContainer(cbCtx, service, backendID)
 	if k8sProbeForServiceContainer != nil {
 		if len(k8sProbeForServiceContainer.Handler.HTTPGet.Host) != 0 {
 			probe.Host = to.StringPtr(k8sProbeForServiceContainer.Handler.HTTPGet.Host)
@@ -130,7 +130,7 @@ func (c *appGwConfigBuilder) generateHealthProbe(backendID backendIdentifier) *n
 	return &probe
 }
 
-func (c *appGwConfigBuilder) getProbeForServiceContainer(service *v1.Service, backendID backendIdentifier) *v1.Probe {
+func (c *appGwConfigBuilder) getProbeForServiceContainer(cbCtx *ConfigBuilderContext, service *v1.Service, backendID backendIdentifier) *v1.Probe {
 	// find all the target ports used by the service
 	allPorts := make(map[int32]interface{})
 	for _, sp := range service.Spec.Ports {
@@ -149,7 +149,7 @@ func (c *appGwConfigBuilder) getProbeForServiceContainer(service *v1.Service, ba
 				// port is defined as port number
 				allPorts[sp.TargetPort.IntVal] = nil
 			} else {
-				for targetPort := range c.resolvePortName(sp.Name, &backendID) {
+				for targetPort := range c.resolvePortName(cbCtx, sp.Name, &backendID) {
 					allPorts[targetPort] = nil
 				}
 			}

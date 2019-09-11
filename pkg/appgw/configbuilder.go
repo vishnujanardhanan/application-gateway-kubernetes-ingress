@@ -44,6 +44,7 @@ type memoization struct {
 	certs                        *[]n.ApplicationGatewaySslCertificate
 	redirectConfigs              *[]n.ApplicationGatewayRedirectConfiguration
 	ports                        *[]n.ApplicationGatewayFrontendPort
+	endpointsByService           *map[k8scontext.ServiceKey]*v1.Endpoints
 }
 
 type appGwConfigBuilder struct {
@@ -140,11 +141,12 @@ func (c *appGwConfigBuilder) runValidationFunctions(cbCtx *ConfigBuilderContext,
 
 // resolvePortName function goes through the endpoints of a given service and
 // look for possible port number corresponding to a port name
-func (c *appGwConfigBuilder) resolvePortName(portName string, backendID *backendIdentifier) map[int32]interface{} {
+func (c *appGwConfigBuilder) resolvePortName(cbCtx *ConfigBuilderContext, portName string, backendID *backendIdentifier) map[int32]interface{} {
 	resolvedPorts := make(map[int32]interface{})
-	endpoints, err := c.k8sContext.GetEndpointsByService(backendID.serviceKey())
-	if err != nil {
-		glog.Error("Could not fetch endpoint by service key from cache", err)
+	svcKey := k8scontext.ServiceKey(backendID.serviceKey())
+	endpoints, exists := c.endpointsByService(cbCtx)[svcKey]
+	if !exists {
+		glog.Error("Could not fetch Endpoints for service: ", backendID.serviceKey())
 		return resolvedPorts
 	}
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/brownfield"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/events"
+	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/k8scontext"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/sorter"
 )
 
@@ -40,7 +41,7 @@ func (c appGwConfigBuilder) getPools(cbCtx *ConfigBuilderContext) []n.Applicatio
 	}
 	_, _, serviceBackendPairMap, _ := c.getBackendsAndSettingsMap(cbCtx)
 	for backendID, serviceBackendPair := range serviceBackendPairMap {
-		if pool := c.getBackendAddressPool(backendID, serviceBackendPair, managedPoolsByName); pool != nil {
+		if pool := c.getBackendAddressPool(cbCtx, backendID, serviceBackendPair, managedPoolsByName); pool != nil {
 			managedPoolsByName[*pool.Name] = pool
 			glog.V(5).Infof("Created backend pool %s for service %s", *pool.Name, backendID.serviceKey())
 		}
@@ -87,16 +88,18 @@ func (c *appGwConfigBuilder) newBackendPoolMap(cbCtx *ConfigBuilderContext) map[
 	_, _, serviceBackendPairMap, _ := c.getBackendsAndSettingsMap(cbCtx)
 	for backendID, serviceBackendPair := range serviceBackendPairMap {
 		backendPoolMap[backendID] = &defaultPool
-		if pool := c.getBackendAddressPool(backendID, serviceBackendPair, addressPools); pool != nil {
+		if pool := c.getBackendAddressPool(cbCtx, backendID, serviceBackendPair, addressPools); pool != nil {
 			backendPoolMap[backendID] = pool
 		}
 	}
 	return backendPoolMap
 }
 
-func (c *appGwConfigBuilder) getBackendAddressPool(backendID backendIdentifier, serviceBackendPair serviceBackendPortPair, addressPools map[string]*n.ApplicationGatewayBackendAddressPool) *n.ApplicationGatewayBackendAddressPool {
-	endpoints, err := c.k8sContext.GetEndpointsByService(backendID.serviceKey())
-	if err != nil {
+func (c *appGwConfigBuilder) getBackendAddressPool(cbCtx *ConfigBuilderContext, backendID backendIdentifier, serviceBackendPair serviceBackendPortPair, addressPools map[string]*n.ApplicationGatewayBackendAddressPool) *n.ApplicationGatewayBackendAddressPool {
+	svcKey := k8scontext.ServiceKey(backendID.serviceKey())
+	endpoints, exists := c.endpointsByService(cbCtx)[svcKey]
+
+	if !exists {
 		logLine := fmt.Sprintf("Failed fetching endpoints for service: %s", backendID.serviceKey())
 		glog.Errorf(logLine)
 		c.recorder.Event(backendID.Ingress, v1.EventTypeWarning, events.ReasonEndpointsEmpty, logLine)
@@ -118,6 +121,20 @@ func (c *appGwConfigBuilder) getBackendAddressPool(backendID backendIdentifier, 
 		c.recorder.Event(backendID.Ingress, v1.EventTypeWarning, events.ReasonBackendPortTargetMatch, logLine)
 	}
 	return nil
+}
+
+func (c *appGwConfigBuilder) endpointsByService(cbCtx *ConfigBuilderContext) map[k8scontext.ServiceKey]*v1.Endpoints {
+	if c.mem.endpointsByService != nil {
+		// return *c.mem.endpointsByService
+	}
+
+	result, err := c.k8sContext.GroupEndpointsByService(cbCtx.ServiceList)
+	if err != nil {
+		glog.Error("Failed fetching Endpoints and grouping by Service key: ", err)
+		return make(map[k8scontext.ServiceKey]*v1.Endpoints)
+	}
+	c.mem.endpointsByService = &result
+	return result
 }
 
 func getUniqueTCPPorts(subset v1.EndpointSubset) map[Port]interface{} {

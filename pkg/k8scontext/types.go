@@ -58,3 +58,4 @@ type Context struct {
 
 // IPAddress is type for IP address string
 type IPAddress string
+type ServiceKey string

@@ -105,7 +105,13 @@ func (c *appGwConfigBuilder) getRules(cbCtx *ConfigBuilderContext) ([]n.Applicat
 			if rule.RedirectConfiguration != nil {
 				glog.V(5).Infof("Bound basic rule %s to listener %s(%s, %d) and redirect configuration %s", *rule.Name, *httpListener.Name, listenerID.HostName, listenerID.FrontendPort, utils.GetLastChunkOfSlashed(*rule.RedirectConfiguration.ID))
 			} else {
-				glog.V(5).Infof("Bound basic rule %s to listener %s(%s, %d), backend pool %s and backend http settings %s", *rule.Name, *httpListener.Name, listenerID.HostName, listenerID.FrontendPort, utils.GetLastChunkOfSlashed(*rule.BackendAddressPool.ID), utils.GetLastChunkOfSlashed(*rule.BackendHTTPSettings.ID))
+				rN := *rule.Name
+
+				hN := *httpListener.Name
+				fep := listenerID.FrontendPort
+				bepid := "" // *rule.BackendAddressPool.ID
+				setID := "" //*rule.BackendHTTPSettings.ID
+				glog.V(5).Infof("Bound basic rule %s to listener %s(%s, %d), backend pool %s and backend http settings %s", rN, hN, listenerID.HostName, fep, utils.GetLastChunkOfSlashed(bepid), utils.GetLastChunkOfSlashed(setID))
 			}
 		}
 		requestRoutingRules = append(requestRoutingRules, rule)

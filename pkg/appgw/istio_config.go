@@ -12,7 +12,7 @@ import (
 
 func (c *appGwConfigBuilder) resolveIstioPortName(portName string, destinationID *istioDestinationIdentifier) map[Port]interface{} {
 	resolvedPorts := make(map[Port]interface{})
-	endpoints, err := c.k8sContext.GetEndpointsByService(destinationID.serviceKey())
+	endpoints, err := c.k8sContext.LookupEndpointsByService(destinationID.serviceKey())
 	if err != nil {
 		glog.Error("Could not fetch endpoint by service key from cache", err)
 		return resolvedPorts
