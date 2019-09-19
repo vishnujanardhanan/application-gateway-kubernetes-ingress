@@ -7,9 +7,11 @@ package metricstore
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/annotations"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/environment"
@@ -23,7 +25,7 @@ var PrometheusNamespace = "appgw_ingress_controller"
 type MetricStore interface {
 	Start()
 	Stop()
-	Registry() *prometheus.Registry
+	Handler() http.Handler
 	SetUpdateLatencySec(time.Duration)
 }
 
@@ -73,7 +75,10 @@ func (ms *AGICMetricStore) SetUpdateLatencySec(duration time.Duration) {
 	ms.updateLatency.Set(duration.Seconds())
 }
 
-// Registry return the registry
-func (ms *AGICMetricStore) Registry() *prometheus.Registry {
-	return ms.registry
+// Handler return the registry
+func (ms *AGICMetricStore) Handler() http.Handler {
+	return promhttp.InstrumentMetricHandler(
+		ms.registry,
+		promhttp.HandlerFor(ms.registry, promhttp.HandlerOpts{}),
+	)
 }

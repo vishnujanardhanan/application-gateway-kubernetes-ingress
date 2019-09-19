@@ -6,6 +6,8 @@
 package controller
 
 import (
+	"net/http"
+
 	n "github.com/Azure/azure-sdk-for-go/services/network/mgmt/2019-06-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/glog"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/appgw"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/environment"
+	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/health"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/httpserver"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/k8scontext"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/metricstore"
@@ -52,7 +55,15 @@ func NewAppGwIngressController(appGwClient n.ApplicationGatewaysClient, appGwIde
 		stopChannel:     make(chan struct{}),
 		metricStore:     metricstore.NewMetricStore(envVariables),
 	}
-	controller.httpServer = httpserver.NewHTTPServer(controller, controller.metricStore, envVariables)
+
+	controller.httpServer = httpserver.NewHTTPServer(
+		map[string]http.Handler{
+			"/health/ready": health.ReadinessHandler(controller),
+			"/health/alive": health.LivenessHandler(controller),
+			"/metrics":      controller.metricStore.Handler(),
+		},
+		envVariables.HTTPServicePort)
+
 	controller.worker = &worker.Worker{
 		EventProcessor: controller,
 	}
