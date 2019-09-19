@@ -3,11 +3,11 @@ global:
 scrape_configs:
 - job_name: 'ingress-azure-local-endpoints'
   static_configs:
-  - targets: ['192.168.65.2:9091']
-# - job_name: 'ingress-azure-pod-endpoints'
-#   kubernetes_sd_configs:
-#   - role: pod
-#   relabel_configs:
-#   - source_labels: [__meta_kubernetes_pod_label_app]
-#     action: keep
-#     regex: ingress-azure
+  - targets: ['192.168.65.2:8123']
+- job_name: 'ingress-azure-pod-endpoints'
+  kubernetes_sd_configs:
+  - role: pod
+  relabel_configs:
+  - source_labels: [__meta_kubernetes_pod_label_app]
+    action: keep
+    regex: ingress-azure
