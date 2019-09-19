@@ -48,8 +48,8 @@ const (
 	// EnablePanicOnPutErrorVarName is a feature flag.
 	EnablePanicOnPutErrorVarName = "APPGW_ENABLE_PANIC_ON_PUT_ERROR"
 
-	// HealthProbeServicePortVarName is an environment variable name.
-	HealthProbeServicePortVarName = "HEALTH_PROBE_SERVICE_PORT"
+	// HTTPServicePortVarName is an environment variable name.
+	HTTPServicePortVarName = "HTTP_SERVICE_PORT"
 
 	// AGICPodNameVarName is an environment variable name.
 	AGICPodNameVarName = "AGIC_POD_NAME"
@@ -73,7 +73,7 @@ type EnvVariables struct {
 	EnableIstioIntegration     bool
 	EnableSaveConfigToFile     bool
 	EnablePanicOnPutError      bool
-	HealthProbeServicePort     string
+	HTTPServicePort            string
 }
 
 var portNumberValidator = regexp.MustCompile(`^[0-9]{4,5}$`)
@@ -95,7 +95,7 @@ func GetEnv() EnvVariables {
 		EnableIstioIntegration:     GetEnvironmentVariable(EnableIstioIntegrationVarName, "false", boolValidator) == "true",
 		EnableSaveConfigToFile:     GetEnvironmentVariable(EnableSaveConfigToFileVarName, "false", boolValidator) == "true",
 		EnablePanicOnPutError:      GetEnvironmentVariable(EnablePanicOnPutErrorVarName, "false", boolValidator) == "true",
-		HealthProbeServicePort:     GetEnvironmentVariable(HealthProbeServicePortVarName, "8123", portNumberValidator),
+		HTTPServicePort:            GetEnvironmentVariable(HTTPServicePortVarName, "8123", portNumberValidator),
 	}
 
 	return env

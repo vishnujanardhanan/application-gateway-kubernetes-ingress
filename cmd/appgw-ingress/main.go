@@ -9,8 +9,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"sort"
@@ -40,10 +38,8 @@ import (
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/crd_client/agic_crd_client/clientset/versioned"
 	istio "github.com/Azure/application-gateway-kubernetes-ingress/pkg/crd_client/istio_crd_client/clientset/versioned"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/environment"
-	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/health"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/k8scontext"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/version"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -126,39 +122,11 @@ func main() {
 		glog.Fatal("Got a fatal validation error on existing Application Gateway config. Please update Application Gateway or the controller's helm config. Error:", err)
 	}
 
-	appGwIngressController := controller.NewAppGwIngressController(appGwClient, appGwIdentifier, k8sContext, recorder)
+	appGwIngressController := controller.NewAppGwIngressController(appGwClient, appGwIdentifier, k8sContext, recorder, env)
 
 	if err := appGwIngressController.Start(env); err != nil {
 		glog.Fatal("Could not start AGIC: ", err)
 	}
-
-	// Start the Health Probe Server (responding to Kubernetes health probes)
-	healthServer := &http.Server{
-		Handler: health.NewHealthMux(appGwIngressController),
-		Addr:    fmt.Sprintf(":%s", env.HealthProbeServicePort),
-	}
-	go func() {
-		glog.Infof("Starting Health Probe Server on %s", healthServer.Addr)
-		if err := healthServer.ListenAndServe(); err != nil {
-			glog.Fatal("Failed starting Health Probe Server", err)
-		}
-	}()
-
-	// Start the Metric Server (responding to Prometheus)
-	reg := appGwIngressController.MetricStore.Registry()
-	metricServer := &http.Server{
-		Handler: promhttp.InstrumentMetricHandler(
-			reg,
-			promhttp.HandlerFor(reg, promhttp.HandlerOpts{}),
-		),
-		Addr: fmt.Sprintf(":%s", "9091"),
-	}
-	go func() {
-		glog.Infof("Starting Metric Server on %s", metricServer.Addr)
-		if err := metricServer.ListenAndServe(); err != nil {
-			glog.Fatal("Failed starting Metric Server", err)
-		}
-	}()
 
 	sigChan := make(chan os.Signal)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

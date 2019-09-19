@@ -6,12 +6,14 @@
 package metricstore
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/annotations"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/environment"
+	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/version"
 )
 
 // PrometheusNamespace is the namespace for appgw ingress controller
@@ -42,6 +44,7 @@ func NewMetricStore(envVariable environment.EnvVariables) MetricStore {
 		"controller_appgw_subscription":   envVariable.SubscriptionID,
 		"controller_appgw_resource_group": envVariable.ResourceGroupName,
 		"controller_appgw_name":           envVariable.AppGwName,
+		"controller_version":              fmt.Sprintf("%s/%s/%s", version.Version, version.GitCommit, version.BuildDate),
 	}
 	return &AGICMetricStore{
 		constLabels: constLabels,

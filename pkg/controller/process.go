@@ -156,7 +156,7 @@ func (c AppGwIngressController) Process(event events.Event) error {
 	duration := time.Now().Sub(deploymentStart)
 	glog.V(1).Infof("Applied App Gateway config in %+v", duration.String())
 
-	c.MetricStore.SetUpdateLatencySec(duration)
+	c.metricStore.SetUpdateLatencySec(duration)
 
 	if err != nil {
 		// Reset cache
