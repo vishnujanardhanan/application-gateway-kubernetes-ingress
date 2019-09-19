@@ -131,6 +131,8 @@ func main() {
 	sigChan := make(chan os.Signal)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
+
+	appGwIngressController.Stop()
 	glog.Info("Goodbye!")
 }
 
