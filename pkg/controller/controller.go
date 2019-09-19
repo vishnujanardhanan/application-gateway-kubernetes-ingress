@@ -62,6 +62,7 @@ func NewAppGwIngressController(appGwClient n.ApplicationGatewaysClient, appGwIde
 // Start function runs the k8scontext and continues to listen to the
 // event channel and enqueue events before stopChannel is closed
 func (c *AppGwIngressController) Start(envVariables environment.EnvVariables) error {
+	c.metricStore.Start()
 	c.httpServer.Start()
 
 	// Starts k8scontext which contains all the informers
