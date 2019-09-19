@@ -43,6 +43,7 @@ import (
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/health"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/k8scontext"
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/version"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -140,6 +141,22 @@ func main() {
 		glog.Infof("Starting Health Probe Server on %s", healthServer.Addr)
 		if err := healthServer.ListenAndServe(); err != nil {
 			glog.Fatal("Failed starting Health Probe Server", err)
+		}
+	}()
+
+	// Start the Metric Server (responding to Prometheus)
+	reg := appGwIngressController.MetricStore.Registry()
+	metricServer := &http.Server{
+		Handler: promhttp.InstrumentMetricHandler(
+			reg,
+			promhttp.HandlerFor(reg, promhttp.HandlerOpts{}),
+		),
+		Addr: fmt.Sprintf(":%s", "9091"),
+	}
+	go func() {
+		glog.Infof("Starting Metric Server on %s", metricServer.Addr)
+		if err := metricServer.ListenAndServe(); err != nil {
+			glog.Fatal("Failed starting Metric Server", err)
 		}
 	}()
 
