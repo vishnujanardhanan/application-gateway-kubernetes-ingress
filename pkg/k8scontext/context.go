@@ -171,6 +171,16 @@ func (c *Context) Run(stopChannel chan struct{}, omitCRDs bool, envVariables env
 	return nil
 }
 
+// GetAGICPod returns the pod with specified name and namespace
+func (c *Context) GetAGICPod(envVariables environment.EnvVariables) (*v1.Pod, error) {
+	pod, err := c.kubeClient.CoreV1().Pods(envVariables.AGICPodNamespace).Get(envVariables.AGICPodName, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return pod, nil
+}
+
 // ListServices returns a list of all the Services from cache.
 func (c *Context) ListServices() []*v1.Service {
 	var serviceList []*v1.Service

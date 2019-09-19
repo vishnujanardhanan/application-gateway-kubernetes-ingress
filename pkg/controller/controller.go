@@ -9,6 +9,7 @@ import (
 	n "github.com/Azure/azure-sdk-for-go/services/network/mgmt/2019-06-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/glog"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 
 	"github.com/Azure/application-gateway-kubernetes-ingress/pkg/appgw"
@@ -29,6 +30,8 @@ type AppGwIngressController struct {
 	configCache *[]byte
 
 	recorder record.EventRecorder
+
+	agicPod *v1.Pod
 
 	stopChannel chan struct{}
 }
@@ -59,6 +62,12 @@ func (c *AppGwIngressController) Start(envVariables environment.EnvVariables) er
 	if err := c.k8sContext.Run(c.stopChannel, false, envVariables); err != nil {
 		glog.Error("Could not start Kubernetes Context: ", err)
 		return err
+	}
+
+	if pod, err := c.k8sContext.GetAGICPod(envVariables); err == nil {
+		c.agicPod = pod
+	} else {
+		glog.Error("Unable to get AGIC pod (possibly running out of cluster or missing access): ", err)
 	}
 
 	// Starts Worker processing events from k8sContext
